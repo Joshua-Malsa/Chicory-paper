@@ -22,12 +22,13 @@ require(ggrepel)
 require(circlize)
 library(tidyr)
 require(scales)
+library(nlme)
 library("knitr")
 library("BiocStyle")
 require('dada2')
 require('phyloseq')
+library(lme4)
 library(data.table)
-library(scales)
 require(stringi)
 require(stringr)
 library(readr)
@@ -69,41 +70,131 @@ BW$Group<- factor(BW$Group, levels = c('Control','Chicory'))
 BW_summary=data_summary(BW, varname="Weight",groupnames=c("Day",'Group'))
 BW_summary
 #   Day   Group  Weight       sd
-# 1  d0 Control 465.150 16.01055
-# 2  d0 Chicory 466.648 16.14718
-# 3 d45 Control 454.708 19.43229
-# 4 d45 Chicory 470.103 19.65939
+# 1 d-5 Control 457.558 18.18193
+# 2 d-5 Chicory 460.561 20.21653
+# 3  d0 Control 456.565 17.92421
+# 4  d0 Chicory 461.523 20.20675
+# 5 d45 Control 471.242 20.45362
+# 6 d45 Chicory 458.896 17.55711
 
 # === Statistical analysis ====
-bwC=BW[BW$Group=='Chicory',]
-bwT=BW[BW$Group=='Control',]
+## BW to create each group
+BW_5=BW[BW$Day=='d-5',]
+#Identify outliers
+BW_5 %>% 
+  group_by(Group) %>%
+  identify_outliers(Weight)
+# Group   Name             Horses Day   Weight is.outlier is.extreme
+# 1 Chicory KASSCROUT DE SPI      2 d-5     436. TRUE       FALSE     
+# 2 Chicory KECHAZULA DE SPI      3 d-5     486. TRUE       FALSE     
+# 3 Chicory KELELAPOM DE SPI      6 d-5     421. TRUE       TRUE      
+# 4 Chicory KONTENTE DE SPI       9 d-5     487. TRUE       FALSE 
 
-D45chico=bwC[bwC$Day=="d45",]
-D45control=bwT[bwT$Day=="d45",]
-D45chico=D45chico$Weight
-D45control=D45control$Weight
+#Normality
+shapiro_test(residuals(lm(Weight ~ Group, data = BW_5)))
+#   variable                                 statistic p.value
+# 1 residuals(lm(Weight ~ Group, data = BW_5))      0.937   0.212
 
-wilcox.test(D45control,D45chico)
-# data:  D45control and D45chico
-# W = 31, p-value = 0.1655
-# alternative hypothesis: true location shift is not equal to 0
+BW_5 %>%
+  group_by(Group) %>%
+  shapiro_test(Weight)
+#    Group   variable statistic     p
+# 1 Control Weight       0.856 0.0676
+# 2 Chicory Weight       0.906 0.255 
+
+#Equality of variance
+BW_5 %>% levene_test(Weight ~ Group)
+#    df1   df2 statistic     p
+#   1    18   0.00172 0.967
+
+#ANOVA
+res.aov <- BW_5 %>% anova_test(Weight ~ Group)
+res.aov
+# ANOVA Table (type II tests)
+#   Effect DFn DFd     F     p p<.05   ges
+# 1  Group   1  18 0.122 0.731       0.007
+
+## BW during the experiment
+BW_test=BW[BW$Day!="d-5",]
+
+BW_test %>% 
+  group_by(Group) %>%
+  identify_outliers(Weight)
+
+#Normality
+shapiro_test(residuals(lm(Weight ~ Group, data = BW_test)))
+#   variable                                      statistic p.value
+# 1 residuals(lm(Weight ~ Group, data = BW_test))     0.984   0.840
+
+BW_test %>%
+  group_by(Group) %>%
+  shapiro_test(Weight)
+#  Group   variable statistic     p
+# 1 Control Weight       0.951 0.376
+# 2 Chicory Weight       0.976 0.865
+
+#Equality of variance
+BW_test %>% levene_test(Weight ~ Group)
+#   df1   df2 statistic     p
+#   1     1    38     0.133 0.717
+
+#ANOVA
+BW_cov=BW[BW$Day!="d-5",]
+BW_cov=BW_cov %>% spread(Day,Weight)
+res.aov_cov <- BW_cov %>% anova_test(d45 ~ Group+d0)
+res.aov_cov
+# ANOVA Table (type II tests)
+# 
+# Effect DFn DFd       F        p p<.05   ges
+# 1  Group   1  17  40.567 6.99e-06     * 0.705
+# 2     d0   1  17 168.668 2.97e-10     * 0.908
 
 ########## Chicory effect on FEC ##########
 # === Parasite data ====
 Chico = read.csv(file='Parasite_data_XP_Chicory.csv',header=T,sep=';',dec=',')
 Chico$Group<- factor(Chico$Group, levels = c('Control','Chicory'))
 
-FEC_summary=data_summary(Chico, varname="EPG",groupnames=c("Day",'Group'))
+#Mean after log+1 transformation
+Chico$logEPG_plus1=log(Chico$EPG+1)
+FEC_summary=data_summary(Chico, varname="logEPG_plus1",groupnames=c("Day",'Group'))
 FEC_summary
-# Day  Group    EPG       sd
-# D0 Control 2169.0 853.5573
-# D0 Chicory 2169.0 794.7390
-# D16 Control 1084.5 383.0176
-# D16 Chicory  285.0 175.7840
-# D31 Control 1233.0 654.8206
-# D31 Chicory  282.0 307.9610
-# D45 Control  864.0 316.9543
-# D45 Chicory  153.0 215.3834
+#   Day   Group logEPG_plus1        sd
+# 1  d0 Control     7.607597 0.4195966
+# 2  d0 Chicory     7.612341 0.4131267
+# 3 d16 Control     6.931347 0.3663331
+# 4 d16 Chicory     5.329088 1.0678714
+# 5 d31 Control     7.000914 0.5090608
+# 6 d31 Chicory     4.859432 1.8811817
+# 7 d45 Control     6.695623 0.3997935
+# 8 d45 Chicory     3.907118 1.8811513
+
+#Mean after back-transformation
+Chico$backEPG_plus1=exp(Chico$logEPG_plus1)-1
+FEC_summary=data_summary(Chico, varname="backEPG_plus1",groupnames=c("Day",'Group'))
+FEC_summary
+#   Day   Group FEC_summary$Low       sd
+# 1  d0 Control        2169.0 853.5573
+# 2  d0 Chicory        2169.0 794.7390
+# 3 d16 Control        1084.5 383.0176
+# 4 d16 Chicory         285.0 175.7840
+# 5 d31 Control        1233.0 654.8206
+# 6 d31 Chicory         282.0 307.9610
+# 7 d45 Control         864.0 316.9543
+# 8 d45 Chicory         153.0 215.3834
+
+FEC_summary$error= qnorm(0.975)*FEC_summary$sd/sqrt(10)
+FEC_summary$Low = FEC_summary$backEPG_plus1 - FEC_summary$error
+FEC_summary$High =FEC_summary$backEPG_plus1 + FEC_summary$error
+FEC_summary
+#   Day   Group backEPG_plus1       sd    error        Low      High
+# 1  d0 Control        2169.0 853.5573 529.0306 1639.96945 2698.0306
+# 2  d0 Chicory        2169.0 794.7390 492.5753 1676.42475 2661.5753
+# 3 d16 Control        1084.5 383.0176 237.3924  847.10758 1321.8924
+# 4 d16 Chicory         285.0 175.7840 108.9500  176.04998  393.9500
+# 5 d31 Control        1233.0 654.8206 405.8545  827.14545 1638.8545
+# 6 d31 Chicory         282.0 307.9610 190.8727   91.12728  472.8727
+# 7 d45 Control         864.0 316.9543 196.4467  667.55333 1060.4467
+# 8 d45 Chicory         153.0 215.3834 133.4935   19.50645  286.4935
 
 #Plot
 ggplot(Chico, aes(x=Day, y=EPG, fill=Group))+
@@ -123,138 +214,147 @@ ggplot(Chico, aes(x=Day, y=EPG, fill=Group))+
         axis.line = element_line(colour = "black"))+
   scale_fill_manual(values=c('#737373','#006d2c'))
 
+
 # === Statistical analysis ====
-D0Con=Chico[Chico$Day=='d0' & Chico$Group=="Control",]
-D16Con=Chico[Chico$Day=='d16' & Chico$Group=="Control",]
-x=D0Con$EPG
-y=D16Con$EPG
-t.test(x,y)
-# data:  x and y
-# t = 3.6657, df = 12.483, p-value = 0.003037
-# alternative hypothesis: true difference in means is not equal to 0
-# 95 percent confidence interval:
-#   442.6585 1726.3415
-# sample estimates:
-#   mean of x mean of y 
-# 2169.0    1084.5 
-
-D0Chico=Chico[Chico$Day=='d0' & Chico$Group=="Chicory",]
-D16Chico=Chico[Chico$Day=='d16' & Chico$Group=="Chicory",]
-D0Chico=D0Chico$EPG
-D16Chico=D16Chico$EPG
-t.test(D0Chico,D16Chico)
-# data:  x and y
-# t = 3.6657, df = 12.483, p-value = 0.003037
-# alternative hypothesis: true difference in means is not equal to 0
-# 95 percent confidence interval:
-#   442.6585 1726.3415
-# sample estimates:
-#   mean of x mean of y 
-# 2169.0    1084.5 
-D0Chico=Chico[Chico$Day=='d0' & Chico$Group=="Chicory",]
-D16Chico=Chico[Chico$Day=='d16' & Chico$Group=="Chicory",]
-D0Chico=D0Chico$EPG
-D16Chico=D16Chico$EPG
-t.test(D0Chico,D16Chico)
-# data:  D0Chico and D16Chico
-# t = 7.3196, df = 9.8785, p-value = 2.717e-05
-# alternative hypothesis: true difference in means is not equal to 0
-# 95 percent confidence interval:
-#   1309.536 2458.464
-# sample estimates:
-#   mean of x mean of y 
-# 2169       285 
-
-gee.fit.EPG <- geeglm(EPG ~ Group * Day,id = Horses, data = Chico, family = poisson,
-                      corstr = "ar1", scale.fix = TRUE, std.err = "san.se")
+gee.fit.EPG <-glmer.nb(EPG ~ Group * Day + (1|Horses), data = Chico)
 summary(gee.fit.EPG)
+# Fixed effects:
+#                     Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)           7.6550     0.2462  31.094  < 2e-16 ***
+# GroupChicory          0.0746     0.3517   0.212 0.832006    
+# Dayd16               -0.7033     0.2862  -2.457 0.013996 *  
+# Dayd31               -0.5903     0.2882  -2.048 0.040533 *  
+# Dayd45               -0.9277     0.2870  -3.232 0.001230 ** 
+# GroupChicory:Dayd16  -1.5133     0.4124  -3.670 0.000243 ***
+# GroupChicory:Dayd31  -1.8378     0.4204  -4.372 1.23e-05 ***
+# GroupChicory:Dayd45  -2.2261     0.4309  -5.166 2.39e-07 ***
+#   ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
-# 
-# Coefficients:
-#                         Estimate   Std.err    Wald Pr(>|W|)    
-# (Intercept)          7.68e+00  1.18e-01 4234.11  < 2e-16 ***
-# GroupChicory        -5.77e-18  1.61e-01    0.00  1.00000    
-# DayD16              -6.93e-01  1.59e-01   19.09  1.2e-05 ***
-# DayD31              -5.65e-01  1.98e-01    8.11  0.00439 ** 
-# DayD45              -9.20e-01  1.61e-01   32.52  1.2e-08 ***
-# GroupChicory:DayD16 -1.34e+00  2.67e-01   24.98  5.8e-07 ***
-# GroupChicory:DayD31 -1.48e+00  3.98e-01   13.71  0.00021 ***
-# GroupChicory:DayD45 -1.73e+00  4.65e-01   13.84  0.00020 ***
-# ---
-# Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+D0Con=Chico$EPG[Chico$Day=='d0' & Chico$Group=="Control"]
+D0Chico=Chico$EPG[Chico$Day=='d0' & Chico$Group=="Chicory"]
+wilcox.test(D0Con,D0Chico)
+# data:  D0Con and D0Chico
+# W = 49, p-value = 0.9698
+# alternative hypothesis: true location shift is not equal to 0
+
+
+D16Con=Chico$EPG[Chico$Day=='d16' & Chico$Group=="Control"]
+D16Chico=Chico$EPG[Chico$Day=='d16' & Chico$Group=="Chicory"]
+wilcox.test(D16Con,D16Chico)
+#data:  D16Con and D16Chico
+# W = 100, p-value = 0.0001817
+# alternative hypothesis: true location shift is not equal to 0 
+
+D31Con=Chico$EPG[Chico$Day=='d31' & Chico$Group=="Control"]
+D31Chico=Chico$EPG[Chico$Day=='d31' & Chico$Group=="Chicory"]
+wilcox.test(D31Con,D31Chico)
+#data:  D31Con and D31Chico
+# W = 94, p-value = 0.0003248
+# alternative hypothesis: true location shift is not equal to 0
+
+D45Con=Chico$EPG[Chico$Day=='d45' & Chico$Group=="Control"]
+D45Chico=Chico$EPG[Chico$Day=='d45' & Chico$Group=="Chicory"]
+wilcox.test(D45Con,D45Chico)
+# data:  D45Con and D45Chico
+# W = 97, p-value = 0.0004353
+# alternative hypothesis: true location shift is not equal to 0
+
+
+# gee.fit.EPG <- geeglm(EPG ~ Group * Day,id = Horses, data = Chico, family = poisson,
+#                       corstr = "ar1", scale.fix = TRUE, std.err = "san.se")
+# summary(gee.fit.EPG)
+# # Coefficients:
+# #                         Estimate   Std.err    Wald Pr(>|W|)    
+# # (Intercept)          7.68e+00  1.18e-01 4234.11  < 2e-16 ***
+# # GroupChicory        -5.77e-18  1.61e-01    0.00  1.00000    
+# # DayD16              -6.93e-01  1.59e-01   19.09  1.2e-05 ***
+# # DayD31              -5.65e-01  1.98e-01    8.11  0.00439 ** 
+# # DayD45              -9.20e-01  1.61e-01   32.52  1.2e-08 ***
+# # GroupChicory:DayD16 -1.34e+00  2.67e-01   24.98  5.8e-07 ***
+# # GroupChicory:DayD31 -1.48e+00  3.98e-01   13.71  0.00021 ***
+# # GroupChicory:DayD45 -1.73e+00  4.65e-01   13.84  0.00020 ***
+# # ---
+# # Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 #==== Chicory efficacy ====
-#data EPG chicory and control for d0 and d45
-d=Chico[Chico$Day=="d0"|Chico$Day=="d45",]
-d=d[,c('Horses', 'Group','Day','EPG')]
-colnames(d)=c('ID','Group','Day','EPG')
-d$Block="Chico"
-
-##-- sample control
-tm0 = sample(d$EPG[d$Group=='Control' & d$Day=='d0'],size = 10)
-tmend = sample(d$EPG[d$Group=='Control' & d$Day=='d45'],size = 10)
-
-##-- sample treated
-trt0 = sample(d$EPG[d$Group=='Chicory' & d$Day=='d0'],size = 10)
-trtend = sample(d$EPG[d$Group=='Chicory' & d$Day=='d45'],size = 10)
-
 ###----- Bayesian hierarchical models
-FECRT_Chico <- eggCounts::fecr_stan(trt0, trtend, rawCounts = TRUE,
-                                    paired = TRUE, indEfficacy = TRUE)
-FECRT_Chico$posterior.summary
+fec_ctl0 = Chico$EPG[Chico$Group=='Control' & Chico$Day=='d0']
+fec_ctl16 = Chico$EPG[Chico$Group=='Control' & Chico$Day=='d16']
+fec_ctl31 = Chico$EPG[Chico$Group=='Control' & Chico$Day=='d31']
+fec_ctl45 = Chico$EPG[Chico$Group=='Control' & Chico$Day=='d45']
+fec_chico0 = Chico$EPG[Chico$Group=='Chicory' & Chico$Day=='d0']
+fec_chico16 = Chico$EPG[Chico$Group=='Chicory' & Chico$Day=='d16']
+fec_chico31 = Chico$EPG[Chico$Group=='Chicory' & Chico$Day=='d31']
+fec_chico45 = Chico$EPG[Chico$Group=='Chicory' & Chico$Day=='d45']
+
+mod_0 <- eggCounts::fecr_stan(fec_ctl0, fec_chico0, rawCounts = TRUE, preCF=50, postCF=50,
+                              paired = TRUE, indEfficacy = TRUE)
+mod_0$posterior.summary
+#                         mean        sd      2.5%       50%      97.5%  HPDLow95       mode  HPDHigh95
+# FECR                  0.2068    0.0791    0.0953     0.193     0.3968    0.0839     0.1724     0.3622
+# meanEPG.untreated 12741.1135 3649.9504 6766.5243 12412.380 20667.9531 6664.5898 11202.4075 20221.1567
+# meanEPG.treated   10104.5014 3079.6644 5100.3281  9716.054 16956.6893 4985.4587  8969.9611 16695.1345
+
+mod_16 <- eggCounts::fecr_stan(fec_ctl16, fec_chico16, rawCounts = TRUE, preCF=50, postCF=50,
+                               paired = TRUE, indEfficacy = TRUE)
+mod_16$posterior.summary
+#                         mean       sd      2.5%        50%      97.5% HPDLow95       mode  HPDHigh95
+# FECR                  0.7288    0.078    0.5396     0.7366     0.8575    0.559     0.7568     0.8665
+# meanEPG.untreated 14310.2089 4102.247 7529.6886 13877.2577 23310.6459 6865.438 12947.4600 22383.9747
+# meanEPG.treated    3867.3025 1541.893 1591.5577  3628.3201  7515.5530 1285.703  3057.3578  7035.7192
+
+mod_31 <- eggCounts::fecr_stan(fec_ctl31, fec_chico31, rawCounts = TRUE, preCF=50, postCF=50,
+                               paired = TRUE, indEfficacy = TRUE)
+mod_31$posterior.summary
 #                         mean        sd      2.5%        50%      97.5%  HPDLow95       mode  HPDHigh95
-# FECR                  0.9462    0.0341    0.8567     0.9541     0.9879    0.8793     0.9591     0.9923
-# meanEPG.untreated 12836.5068 3681.7347 6554.6347 12542.2863 20789.5270 6180.2051 12423.2995 19905.5972
-# meanEPG.treated     691.9600  506.9108  134.5365   571.1150  2017.3476   59.7573   439.5252  1660.9121
+# FECR                  0.7853    0.0965    0.5464     0.8014     0.9315    0.5771     0.8337     0.9472
+# meanEPG.untreated 13384.1253 3867.7946 6870.4659 13060.4077 21439.5923 6532.4142 12527.7072 20753.9412
+# meanEPG.treated    2877.4335 1587.3500  775.0548  2547.6081  6866.3950  519.7044  1994.3112  6093.5680
 
-###----- Bootstrap aproach 
-bdatok=d
-vecfarm = unique(bdatok$Block)
-cicross = NULL
-n = 0
+mod_45 <- eggCounts::fecr_stan(fec_ctl45, fec_chico45, rawCounts = TRUE, preCF=50, postCF=50,
+                               paired = TRUE, indEfficacy = TRUE)
+mod_45$posterior.summary
+#                         mean        sd      2.5%        50%      97.5%  HPDLow95       mode  HPDHigh95
+# FECR                  0.8548    0.0831    0.6475     0.8706     0.9746    0.6951     0.8997     0.9952
+# meanEPG.untreated 14763.1220 4104.1911 7506.4874 14501.1554 23427.1651 7262.2810 13118.9021 23008.4416
+# meanEPG.treated    2147.3106 1402.3396  301.0928  1807.4226  5754.2500   71.8540  1448.0010  4769.5084
 
-for(f in vecfarm){
-  ##-- subset farm of interest
-  d = bdatok[bdatok$Block==f,]
-  ##-- iteration
-  n = n + 1
-  Eff = array(NA,1000)
-  
-  for(i in 1:1000){
-    ##-- sample control
-    tm0 = sample(d$EPG[d$Group=='Control' & d$Day=='d0'],size = 10,replace = T)
-    tmend = sample(d$EPG[d$Group=='Control' & d$Day=='d45'],size = 10,replace = T)
-    
-    ##-- sample treated
-    trt0 = sample(d$EPG[d$Group=='Chicory' & d$Day=='d0'],size = 10,replace = T)
-    trtend = sample(d$EPG[d$Group=='Chicory' & d$Day=='d45'],size = 10,replace = T)
-    
-    ##-- FECR
-    tm.0=mean(tm0)
-    tm.end=mean(tmend)
-    trt.0=mean(trt0)
-    trt.end=mean(trtend)
-    trt = trt.end/trt.0
-    tm = tm.end/tm.0
-    Eff[i] = ((1-((trt)/(tm)))*100)
-    if(Eff[i]<0){Eff[i]=0} 
-  }
-  #b0 = fecrtCI(d$PEQ0,d$PEQ14,paired=TRUE,R=1000,alpha=.05)
-  cicross$Lot[n] = f
-  tm=mean(bdatok$EPG[bdatok$Block==f & bdatok$Day=='d45'& bdatok$Group=='Control'])/mean(bdatok$EPG[bdatok$Block==f & bdatok$Day=='d0'& bdatok$Group=='Control'])
-  trt=mean(bdatok$EPG[bdatok$Block==f & bdatok$Day=='d45'& bdatok$Group=='Chicory'])/mean(bdatok$EPG[bdatok$Block==f & bdatok$Day=='d0'& bdatok$Group=='Chicory'])
-  cicross$Efficacy[n] =((1-((trt)/(tm)))*100) 
-  cicross$CIdw[n] = quantile(Eff, 0.025, na.rm=T)
-  cicross$CIup[n] = quantile(Eff, 0.975, na.rm=T)
-  rm(Eff)
-  #  rm(b0)
-}
-cicross=data.frame(cicross)
-cicross
-#     Lot Efficacy     CIdw     CIup
-# 1 Chico 82.29167 62.63515 96.0607
+###----- Cumulative FEC analysis
+data_FEC=select(Chico, Horses, Group,Day,logEPG_plus1)
+data_FEC=data_FEC %>% spread(Day,logEPG_plus1)
 
-########## Chicory effect on larval development ##########
+data_FEC$mean_FEC_d0d16=((data_FEC$d0+data_FEC$d16)/2)*16
+data_FEC$mean_FEC_d16d31=((data_FEC$d16+data_FEC$d31)/2)*15
+data_FEC$mean_FEC_d31d45=((data_FEC$d31+data_FEC$d45)/2)*14
+
+data_FEC$FEC_0plus16=data_FEC$d0+data_FEC$mean_FEC_d0d16
+data_FEC$FEC_0plus16plus31=data_FEC$FEC_0plus16+data_FEC$mean_FEC_d16d31
+data_FEC$FEC_0plus16plus31plus45=data_FEC$FEC_0plus16plus31+data_FEC$mean_FEC_d31d45
+
+FEC_cum=select(data_FEC, Horses, Group,FEC_0plus16 ,FEC_0plus16plus31,FEC_0plus16plus31plus45)
+FEC_cum=FEC_cum %>% pivot_longer(cols = c("FEC_0plus16","FEC_0plus16plus31","FEC_0plus16plus31plus45"), names_to = "day", values_to = "cumul")
+mean_FEC_cum=data_summary(FEC_cum, varname="cumul",groupnames=c('Group','day'))
+mean_FEC_cum
+#     Group                     day    cumul        sd
+# 1 Control             FEC_0plus16 28197.00  9554.488
+# 2 Control       FEC_0plus16plus31 45578.25 14740.692
+# 3 Control FEC_0plus16plus31plus45 60257.25 19843.162
+# 4 Chicory             FEC_0plus16 21801.00  7880.940
+# 5 Chicory       FEC_0plus16plus31 26053.50 10336.284
+# 6 Chicory FEC_0plus16plus31plus45 29098.50 13076.311
+
+cumul_ctl45 = FEC_cum$cumul[FEC_cum$Group=='Control' & FEC_cum$day=='FEC_0plus16plus31plus45']
+cumul_chi45 = FEC_cum$cumul[FEC_cum$Group=='Chicory' & FEC_cum$day=='FEC_0plus16plus31plus45']
+
+wilcox.test(cumul_ctl45,cumul_chi45, alternative = "two.sided")
+# Wilcoxon rank sum exact test
+# 
+# data:  cumul_ctl45 and cumul_chi45
+# W = 96, p-value = 0.0001299
+# alternative hypothesis: true location shift is not equal to 0
+
+########## Chicory effect on larval development rate ##########
 Chico$id=row.names(Chico)
 OUT=Chico %>% 
   group_by(Group, Day) %>%
@@ -289,7 +389,7 @@ Dev_summary_byDay_Group
 ggplot(Chico, aes(x=Day, y=Dev, fill=Group))+
   geom_boxplot(alpha=0.4)+
   geom_point(aes(x = Day,y= Dev, group = Group), size = 1.5, shape = 1,position = position_jitterdodge(0))+
-  labs(title=, y='Developpement percentage (%)', x='Day')+
+  labs(title=, y='Larval development rate (%)', x='Day')+
   theme(axis.line = element_line(size = 1, linetype = "solid"),
         legend.title = element_blank(),legend.position="bottom",
         legend.text = element_text(size=33, family = "Lato"),
@@ -305,6 +405,27 @@ ggplot(Chico, aes(x=Day, y=Dev, fill=Group))+
 
 # === Statistical analysis ====
 NoD0=Chico[Chico$Day!="d0",]
+
+gee.fit.Dev <- geeglm(Dev ~ Group * Day, id = Horses, data = NoD0, family = poisson,
+                      corstr = "ar1", scale.fix = TRUE, std.err = "san.se")
+summary(gee.fit.Dev)
+# Coefficients:
+# Estimate  Std.err    Wald Pr(>|W|)    
+# (Intercept)          2.57794  0.17130 226.477  < 2e-16 ***
+# GroupChicory        -0.06226  0.23063   0.073  0.78719    
+# Dayd31               0.46929  0.23813   3.884  0.04876 *  
+# Dayd45               0.49458  0.21382   5.350  0.02072 *  
+# GroupChicory:Dayd31 -0.94528  0.37430   6.378  0.01155 *  
+# GroupChicory:Dayd45 -0.99777  0.36253   7.575  0.00592 ** 
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+ChicoD16= Chico$Dev[Chico$Group=='Chicory' & Chico$Day=='d16']
+CtlD16= Chico$Dev[Chico$Group=='Control' & Chico$Day=='d16']
+wilcox.test(ChicoD16,CtlD16)
+# data:  ChicoD16 and CtlD16
+# W = 48, p-value = 0.9118
+# alternative hypothesis: true location shift is not equal to 0
 
 ChicoD31=NoD0[NoD0$Group=="Chicory" & NoD0$Day=="d31",]
 ChicoD31=ChicoD31$Dev
@@ -326,11 +447,22 @@ wilcox.test(ChicoD45,CtlD45)
 # W = 6, p-value = 0.001
 # alternative hypothesis: true location shift is not equal to 0
 
+wilcox.test(CtlD16,CtlD31)
+# data:  CtlD16 and CtlD31
+# W = 25, p-value = 0.1
+# alternative hypothesis: true location shift is not equal to 0
+
+wilcox.test(CtlD31,CtlD45)
+# data:  CtlD31 and CtlD45
+# W = 44, p-value = 1
+# alternative hypothesis: true location shift is not equal to 0
+
+
 ########## Chicory effect on equine cyathostomins larval community structure ##########
 path <- ""
 setwd(path)
 
-tr=read.table("track_chicory_dada2_R_ci_mxee25_trunc200_BS16.tsv")
+tr=read.table("track_output_chicory_dada2_R_ci_mxee25_trunc200_BS16.tsv")
 head(tr)
 summary(tr$filtered)
 # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
@@ -345,7 +477,6 @@ train <- readDNAStringSet("curated_nemaca_ITS2_Strongylidae.fasta")
 tax <- read_tsv("idtaxa_03022022.tax") 
 
 trainingSet <- LearnTaxa(train, names(train), tax)
-
 
 ### Read in seqtab
 seqtab_nochim = read.table(file = paste0('output_chicory_dada2_R_ci_mxee25_trunc200_BS16.tsv'),
@@ -491,7 +622,7 @@ nalist_sp = rownames(tax_table(psITS.f.wk.t.f)[which(is.na(tax_table(psITS.f.wk.
 nalist_sp
 #[1] "ASV_12" "ASV_25"
 which(is.na(tax_table(psITS.f.wk.t.f)[,6]))
-#10
+#integer(0)
 
 df_na = otu_table(psITS.f.wk.t.f)[which(rownames(otu_table(psITS.f.wk.t.f)) %in% nalist_sp),]
 df_na = df_na[,which(colSums(df_na)>0)]
@@ -517,8 +648,18 @@ psci
 # sample_data() Sample Data:       [ 54 samples by 4 sample variables ]
 # tax_table()   Taxonomy Table:    [ 14 taxa by 7 taxonomic ranks ]
 
+### Overall distribution
+plot_bar(psci, x = 'Horse', fill="species") +
+  facet_wrap(~ Group + Day , ncol = 4, scales = 'free_x') + 
+  theme_classic() +
+  theme(legend.position = 'bottom',text = element_text(size = 16),
+        axis.text.x = element_text(size = 10),
+        legend.title = element_blank(),
+        strip.background = element_blank()) + 
+  guides(fill = guide_legend(nrow = 3))
+
 ### Remove d0 and keep horses with 3 occurrences
-psci.f = subset_samples(psITS.f.wk,Day !='d0')
+psci.f = subset_samples(psci,Day !='d0')
 Htokeep=names(table(sample_data(psci.f)$Horse)[which(table(sample_data(psci.f)$Horse)==3)])
 ci = subset_samples(psci.f,Horse %in% Htokeep)
 
@@ -563,7 +704,7 @@ table(sample_data(psITchico)$Group, sample_data(psITchico)$Day)
 
 # ### Trajectory from day16 to day45
 ct=psITS.f.wk
-ct = subset_samples(ct,Day !='d0' & Day!="d31" &Group!='Mo')
+ct = subset_samples(ct,Day !='d0' & Day!="d31" & Group!='Mo')
 
 dfTraj = reshape2::melt(as.matrix(otu_table(ct)))
 colnames(dfTraj) = c('otu','sample.id','count')
@@ -669,7 +810,7 @@ Shannon=ggplot(alphaplot) +
   labs(x = "Group", y = "Alpha diversity", color = "Pipeline") +
   theme(legend.position = 'bottom', text = element_text(size = 16))+
   theme(axis.line = element_line(size = 1, linetype = "solid"),
-        legend.title = element_blank(),legend.position="none",
+        legend.title = element_blank(),legend.position="bottom",
         legend.text = element_text(size=33, family = "Lato"),
         axis.title.x = element_text(size=35, family = "Lato", margin = margin(t = 0.4, unit="cm")), 
         axis.title.y = element_text(size=35, family = "Lato", margin = margin(r = 0.4, unit="cm")),
@@ -683,6 +824,10 @@ Shannon=ggplot(alphaplot) +
         strip.text.x = element_text(size=20, family = "Lato", face="bold"))+
   scale_fill_manual(values=c('#737373','#006d2c'))
 Shannon
+
+ragg::agg_tiff("~/save/Chicory/Chicory paper/Alpha_plot.tiff", width = 13, height = 7, units = "in", res = 300)
+Shannon
+dev.off()
 
 Shan=alphaplot[alphaplot$diversity_measure=="Shannon",]
 
@@ -805,7 +950,7 @@ Shannon_Bray
 
 ########## In vitro anthelmintic activity evaluation of the SLs extract ##########
 #=== IC50 mesurement (LDA) ====
-win = read.csv(file='LDA_in_vitro_SLs_XP_Chicory.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
+win = read.csv(file='Test_in_vitro_SL.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
 win=win[win$Conc!="2500" & win$Conc!="3500" ,]
 win$id=row.names(win)
 
@@ -917,7 +1062,7 @@ Plot_IC50_Chicory=ggplot() +
                 labels = c("0","0.1","1", "10","100", "1000", "10000","100000","1000000"))+
   labs(title=, y='Development percentage \n to the control', x='Concentrations (µg/mL)')+
   theme(axis.line = element_line(size = 1, linetype = "solid"),
-        legend.title = element_blank(),legend.position="bottom",
+        legend.title = element_blank(),legend.position="none",
         legend.text = element_text(size=33, family = "Lato"),
         axis.title.x = element_text(size=35, family = "Lato", margin = margin(t = 0.4, unit="cm")), 
         axis.title.y = element_text(size=35, family = "Lato", margin = margin(r = 0.4, unit="cm")),
@@ -943,37 +1088,48 @@ CI50<-ED(mod,50,interva="delta")
 
 ## Comparaison between compounds
 compParm(mod,"e","-")
-#                Estimate Std. Error t-value   p-value    
+#                    Estimate Std. Error t-value   p-value    
 # Nouzilly-Chamberet  2434.44     200.06  12.169 < 2.2e-16 ***
 
 ### === FECRT against pyrantel ====
-FECr = read.csv(file='FECRT_Pyrantel_INRAE_&_Chamberet_XP_Chicory.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
+FECr = read.csv(file='FECRT_INRAE_Chamberet.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
 
-N_fec0.trt = FECr$FEC[FECr$day =='d0' & FECr$Treatment=='HIGH_TRT']
-N_fec15.trt = FECr$FEC[FECr$day =='d15' & FECr$Treatment=='HIGH_TRT']
-C_fec0_trt= FECr$FEC[FECr$day =='d0' & FECr$Treatment=='TRT']
-C_fec14_trt = FECr$FEC[FECr$day =='d14' & FECr$Treatment=='TRT']
+I_fec0.trt = FECr$FEC[FECr$day =='D0' & FECr$Treatment=='HIGH_TRT']
+I_fec15.trt = FECr$FEC[FECr$day =='D15' & FECr$Treatment=='HIGH_TRT']
+I_fec0.ctl = FECr$FEC[FECr$day =='D0' & FECr$Treatment=='HIGH_CTL']
+I_fec15.ctl = FECr$FEC[FECr$day =='D15' & FECr$Treatment=='HIGH_CTL']
+C_fec0_trt= FECr$FEC[FECr$day =='D0' & FECr$Treatment=='TRT']
+C_fec14_trt = FECr$FEC[FECr$day =='D14' & FECr$Treatment=='TRT']
+C_fec0_ctl= FECr$FEC[FECr$day =='D0' & FECr$Treatment=='CTL']
+C_fec14_ctl = FECr$FEC[FECr$day =='D14' & FECr$Treatment=='CTL']
 
 ###----- FECr day15
-FECRT_N <- eggCounts::fecr_stan(N_fec0.trt, N_fec15.trt, rawCounts = TRUE,
+FECRT_I0 <- eggCounts::fecr_stan(I_fec0.ctl, I_fec0.trt, rawCounts = TRUE, preCF=50, postCF=50,
                                 paired = TRUE, indEfficacy = TRUE)
-fecR_N=FECRT_N$posterior.summary
-fecR_N=fecR_N[1,c(1:8)]
+#                         mean        sd      2.5%        50%      97.5%  HPDLow95      mode  HPDHigh95
+# FECR                  0.6143    0.1556    0.3284     0.6138     0.9147    0.3330    0.6613     0.9167
+# meanEPG.untreated 11361.2914 3182.2345 6050.8741 11114.7635 18259.8758 5660.7082 9675.7541 17727.6197
+# meanEPG.treated    4396.1355 2240.6386  848.8773  4077.6448  9410.4345  388.6232 3400.0162  8709.2150
 
-FECRT_C <- eggCounts::fecr_stan(C_fec0_trt, C_fec14_trt, rawCounts = TRUE,
-                                paired = TRUE, indEfficacy = TRUE)
-fecR_C=FECRT_C$posterior.summary
-fecR_C=fecR_C[1,c(1:8)]
+FECRT_I15 <- eggCounts::fecr_stan(I_fec15.ctl, I_fec15.trt, rawCounts = TRUE, preCF=50, postCF=50,
+                                 paired = TRUE, indEfficacy = TRUE)
+#                         mean        sd      2.5%        50%      97.5%  HPDLow95       mode HPDHigh95
+# FECR                  0.9152    0.0684    0.7345     0.9312     0.9956    0.7811     0.9667     1.000
+# meanEPG.untreated 12489.6926 2913.7049 7385.6274 12366.9004 18690.4976 6919.9703 12008.1379 18072.498
+# meanEPG.treated    1056.2624  896.9010   50.1153   822.4317  3349.2235    0.4151   386.8969  2829.083
 
-fecR_N$Group="INRAE"
-fecR_C$Group="Chamberet"
 
-FECRT=bind_rows(fecR_N,fecR_C)
+FECRT_C0 <-  eggCounts::fecr_stan(C_fec0_ctl, C_fec0_trt, rawCounts = TRUE, preCF=50, postCF=50,
+                                  paired = TRUE, indEfficacy = TRUE)
+#                         mean        sd      2.5%       50%      97.5%  HPDLow95       mode  HPDHigh95
+# FECR                  0.2816    0.0959    0.1461     0.263     0.5163    0.1261     0.2271     0.4729
+# meanEPG.untreated 12660.4628 3672.6803 6596.3783 12374.638 20655.2063 6203.2847 11824.9979 20061.9716
+# meanEPG.treated    9080.1705 2869.7094 4355.1869  8868.221 15390.9887 3325.7777  8718.0609 14305.3592
 
-FECRT$mean_100=FECRT$mean*100
-FECRT$HPDLow95_100=FECRT$HPDLow95*100
-FECRT$HPDHigh95_100=FECRT$HPDHigh95*100
-FECRT
-#            mean     sd   2.5%    50%  97.5% HPDLow95   mode HPDHigh95     Group mean_100  HPDLow95_100 HPDHigh95_100
-# FECR...1 0.9105 0.0567 0.7662 0.9208 0.9855   0.8105 0.9267         1  INRAE    91.05         81.05           100
-# FECR...2 0.9927 0.0094 0.9723 0.9950 0.9998   0.9800 0.9965         1 Chamberet    99.27         98.00           100
+FECRT_C14 <- eggCounts::fecr_stan(C_fec14_ctl, C_fec14_trt, rawCounts = TRUE, preCF=50, postCF=50,
+                                  paired = TRUE, indEfficacy = TRUE)
+#                         mean        sd      2.5%        50%      97.5%  HPDLow95       mode  HPDHigh95
+# FECR                  0.9927    0.0073    0.9750     0.9943     0.9995    0.9818     0.9955     1.0000
+# meanEPG.untreated 12084.8031 3354.1243 6445.3670 11658.7404 19577.4183 6069.5224 10591.5410 18834.0604
+# meanEPG.treated      88.4058   92.5119    5.3286    67.3077   309.5048    0.0579    41.7179   228.2737
+####################################################################################################################
