@@ -59,7 +59,7 @@ get_legend<-function(myggplot){
 }
 
 ## === Work file ===
-path<-"~/Scripts/Chicory paper"
+path<-""
 setwd(path)
 
 ########## Herbage characteristics and dietary choices ##########
