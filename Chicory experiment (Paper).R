@@ -59,7 +59,7 @@ get_legend<-function(myggplot){
 }
 
 ## === Work file ===
-path<-""
+path<-"~/Scripts/Chicory paper"
 setwd(path)
 
 ########## Herbage characteristics and dietary choices ##########
@@ -459,9 +459,6 @@ wilcox.test(CtlD31,CtlD45)
 
 
 ########## Chicory effect on equine cyathostomins larval community structure ##########
-path <- ""
-setwd(path)
-
 tr=read.table("track_output_chicory_dada2_R_ci_mxee25_trunc200_BS16.tsv")
 head(tr)
 summary(tr$filtered)
@@ -950,7 +947,7 @@ Shannon_Bray
 
 ########## In vitro anthelmintic activity evaluation of the SLs extract ##########
 #=== IC50 mesurement (LDA) ====
-win = read.csv(file='Test_in_vitro_SL.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
+win = read.csv(file='LDA_in_vitro_SLs_XP_Chicory.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
 win=win[win$Conc!="2500" & win$Conc!="3500" ,]
 win$id=row.names(win)
 
@@ -1092,16 +1089,16 @@ compParm(mod,"e","-")
 # Nouzilly-Chamberet  2434.44     200.06  12.169 < 2.2e-16 ***
 
 ### === FECRT against pyrantel ====
-FECr = read.csv(file='FECRT_INRAE_Chamberet.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
+FECr = read.csv(file='FECRT_Pyrantel_INRAE_&_Chamberet_XP_Chicory.csv',header=T,sep=';',dec=',',fileEncoding="latin1")
 
-I_fec0.trt = FECr$FEC[FECr$day =='D0' & FECr$Treatment=='HIGH_TRT']
-I_fec15.trt = FECr$FEC[FECr$day =='D15' & FECr$Treatment=='HIGH_TRT']
-I_fec0.ctl = FECr$FEC[FECr$day =='D0' & FECr$Treatment=='HIGH_CTL']
-I_fec15.ctl = FECr$FEC[FECr$day =='D15' & FECr$Treatment=='HIGH_CTL']
-C_fec0_trt= FECr$FEC[FECr$day =='D0' & FECr$Treatment=='TRT']
-C_fec14_trt = FECr$FEC[FECr$day =='D14' & FECr$Treatment=='TRT']
-C_fec0_ctl= FECr$FEC[FECr$day =='D0' & FECr$Treatment=='CTL']
-C_fec14_ctl = FECr$FEC[FECr$day =='D14' & FECr$Treatment=='CTL']
+I_fec0.trt = FECr$FEC[FECr$Day =='d0' & FECr$Treatment=='HIGH_TRT']
+I_fec15.trt = FECr$FEC[FECr$Day =='d15' & FECr$Treatment=='HIGH_TRT']
+I_fec0.ctl = FECr$FEC[FECr$Day =='d0' & FECr$Treatment=='HIGH_CTL']
+I_fec15.ctl = FECr$FEC[FECr$Day =='d15' & FECr$Treatment=='HIGH_CTL']
+C_fec0_trt= FECr$FEC[FECr$Day =='d0' & FECr$Treatment=='TRT']
+C_fec14_trt = FECr$FEC[FECr$Day =='d14' & FECr$Treatment=='TRT']
+C_fec0_ctl= FECr$FEC[FECr$Day =='d0' & FECr$Treatment=='CTL']
+C_fec14_ctl = FECr$FEC[FECr$Day =='d14' & FECr$Treatment=='CTL']
 
 ###----- FECr day15
 FECRT_I0 <- eggCounts::fecr_stan(I_fec0.ctl, I_fec0.trt, rawCounts = TRUE, preCF=50, postCF=50,
